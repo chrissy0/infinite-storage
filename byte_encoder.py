@@ -22,94 +22,96 @@ width = 480
 height = 270
 scale_factor = 8
 fps_encoded = 24
+chunk_size = int(width * height / 8 * 2)  # Every pixel consists of 2 bits and every byte of 8 bits
 
 
 def encode_file(path):
     print(f"encode_file(\"{path}\")")
+    file_size = os.path.getsize(path)
 
     if os.path.exists("out"):
         shutil.rmtree("out")
     Path("out").mkdir(parents=True, exist_ok=True)
 
-    with open(path, "rb") as file:
-        binary = file.read()
+    with tqdm(total=file_size) as pbar:
+        with open(path, "rb") as file:
+            frames_processed = 0
+            while True:
+                chunk = file.read(chunk_size)
+                pbar.update(chunk_size)
+                if not chunk:
+                    break
 
-    print("extracting bits ..")
-    bits = []
-    for byte in tqdm(binary):
-        for bit in byte_to_bits(byte):
-            bits.append(bit)
+                bits = []
+                for byte in chunk:
+                    for bit in byte_to_bits(byte):
+                        bits.append(bit)
 
-    print("generating frames (for each channel) ..")
-    frames_list_c0 = []
-    frames_list_c1 = []
-    frames_list_c2 = []
-    frames_lists = [frames_list_c0, frames_list_c1, frames_list_c2]
-    counter = 0
-    import math
-    with tqdm(total=math.ceil(len(bits))) as pbar:
-        while counter < len(bits):
-            all_rows_list_c0 = []
-            all_rows_list_c1 = []
-            all_rows_list_c2 = []
-            for row in range(height):
-                single_row_list_c0 = []
-                single_row_list_c1 = []
-                single_row_list_c2 = []
-                for col in range(width):
-                    if counter >= len(bits):
-                        single_row_list_c2.append(True)
-                    else:
-                        single_row_list_c2.append(False)
+                frames_list_c0 = []
+                frames_list_c1 = []
+                frames_list_c2 = []
+                frames_lists = [frames_list_c0, frames_list_c1, frames_list_c2]
+                counter = 0
+                while counter < len(bits):
+                    all_rows_list_c0 = []
+                    all_rows_list_c1 = []
+                    all_rows_list_c2 = []
+                    for row in range(height):
+                        single_row_list_c0 = []
+                        single_row_list_c1 = []
+                        single_row_list_c2 = []
+                        for col in range(width):
+                            if counter >= len(bits):
+                                single_row_list_c2.append(True)
+                            else:
+                                single_row_list_c2.append(False)
 
-                    to_append = "0"
-                    if counter < len(bits):
-                        bit = bits[counter]
-                        if bit == "1":
-                            to_append = False
-                        if bit == "0":
-                            to_append = True
-                    single_row_list_c0.append(to_append)
-                    counter += 1
-                    pbar.update(1)
+                            to_append = "0"
+                            if counter < len(bits):
+                                bit = bits[counter]
+                                if bit == "1":
+                                    to_append = False
+                                if bit == "0":
+                                    to_append = True
+                            single_row_list_c0.append(to_append)
+                            counter += 1
 
-                    to_append = "0"
-                    if counter < len(bits):
-                        bit = bits[counter]
-                        if bit == "1":
-                            to_append = False
-                        if bit == "0":
-                            to_append = True
-                    single_row_list_c1.append(to_append)
-                    counter += 1
-                    pbar.update(1)
-                all_rows_list_c0.append(single_row_list_c0)
-                all_rows_list_c1.append(single_row_list_c1)
-                all_rows_list_c2.append(single_row_list_c2)
-            frames_list_c0.append(all_rows_list_c0)
-            frames_list_c1.append(all_rows_list_c1)
-            frames_list_c2.append(all_rows_list_c2)
+                            to_append = "0"
+                            if counter < len(bits):
+                                bit = bits[counter]
+                                if bit == "1":
+                                    to_append = False
+                                if bit == "0":
+                                    to_append = True
+                            single_row_list_c1.append(to_append)
+                            counter += 1
+                        all_rows_list_c0.append(single_row_list_c0)
+                        all_rows_list_c1.append(single_row_list_c1)
+                        all_rows_list_c2.append(single_row_list_c2)
+                    frames_list_c0.append(all_rows_list_c0)
+                    frames_list_c1.append(all_rows_list_c1)
+                    frames_list_c2.append(all_rows_list_c2)
 
-    print("converting to numpy arrays ..")
-    numpy_frame_masks_by_channel = []
-    for frames_list in frames_lists:
-        numpy_frame_masks_by_channel.append([])
-        for entry in tqdm(frames_list):
-            numpy_frame_masks_by_channel[-1].append(np.array(entry, dtype=bool))
+                numpy_frame_masks_by_channel = []
+                for frames_list in frames_lists:
+                    numpy_frame_masks_by_channel.append([])
+                    for entry in frames_list:
+                        numpy_frame_masks_by_channel[-1].append(np.array(entry, dtype=bool))
 
-    print("saving frames ..")
-    for frame_idx in tqdm(range(len(numpy_frame_masks_by_channel[-1]))):
-        for channel_idx in range(3):
-            frame = Image.new('RGB', (width, height))
+                for frame_idx in range(len(numpy_frame_masks_by_channel[-1])):
+                    actual_frame = frames_processed
+                    frames_processed += 1
+                    for channel_idx in range(3):
+                        frame = Image.new('RGB', (width, height))
 
-            # set the pixel values based on the boolean values
-            arr = np.array(frame)
-            arr[:, :, 0] = numpy_frame_masks_by_channel[0][frame_idx] * 255
-            arr[:, :, 1] = numpy_frame_masks_by_channel[1][frame_idx] * 255
-            arr[:, :, 2] = numpy_frame_masks_by_channel[2][frame_idx] * 255
+                        # set the pixel values based on the boolean values
+                        arr = np.array(frame)
+                        arr[:, :, 0] = numpy_frame_masks_by_channel[0][frame_idx] * 255
+                        arr[:, :, 1] = numpy_frame_masks_by_channel[1][frame_idx] * 255
+                        arr[:, :, 2] = numpy_frame_masks_by_channel[2][frame_idx] * 255
 
-            frame = Image.fromarray(arr, mode='RGB')
-            frame.save(f"out/{str(frame_idx).zfill(8)}.png")
+                        frame = Image.fromarray(arr, mode='RGB')
+                        frame.save(f"out/{str(actual_frame).zfill(8)}.png")
 
 
 def decode_frame(frame):
@@ -184,7 +186,7 @@ def decode_video(video_path, out_path):
 
 
 def create_video(out_path):
-    print("create_video()")
+    print(f"create_video(\"{out_path}\")")
     videodims = (width * scale_factor, height * scale_factor)
     fourcc = cv2.VideoWriter_fourcc(*'avc1')
     video = cv2.VideoWriter(out_path, fourcc, fps_encoded, videodims)
@@ -202,6 +204,6 @@ def create_video(out_path):
     video.release()
 
 
-encode_file("input.png")
-create_video("encoded.mp4")
-decode_video("encoded.mp4", "output.png")
+encode_file("input2.mp4")
+create_video("encoded2.mp4")
+decode_video("encoded2.mp4", "output2.mp4")
