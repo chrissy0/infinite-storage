@@ -21,7 +21,7 @@ def bits_to_binary(bits):
 width = 480
 height = 270
 scale_factor = 8
-fps_encoded = 6
+fps_encoded = 24
 
 
 def encode_file(path):
@@ -34,63 +34,94 @@ def encode_file(path):
     with open(path, "rb") as file:
         binary = file.read()
 
+    print("extracting bits ..")
     bits = []
     for byte in tqdm(binary):
         for bit in byte_to_bits(byte):
             bits.append(bit)
 
-    frames_list = []
+    print("generating frames (for each channel) ..")
+    frames_list_c0 = []
+    frames_list_c1 = []
+    frames_list_c2 = []
+    frames_lists = [frames_list_c0, frames_list_c1, frames_list_c2]
     counter = 0
     import math
-    with tqdm(total=math.ceil(len(bits) / (height * width))) as pbar:
+    with tqdm(total=math.ceil(len(bits))) as pbar:
         while counter < len(bits):
-            all_rows_list = []
+            all_rows_list_c0 = []
+            all_rows_list_c1 = []
+            all_rows_list_c2 = []
             for row in range(height):
-                single_row_list = []
+                single_row_list_c0 = []
+                single_row_list_c1 = []
+                single_row_list_c2 = []
                 for col in range(width):
-                    to_append = None
+                    if counter >= len(bits):
+                        single_row_list_c2.append(True)
+                    else:
+                        single_row_list_c2.append(False)
+
+                    to_append = "0"
                     if counter < len(bits):
                         bit = bits[counter]
                         if bit == "1":
                             to_append = False
                         if bit == "0":
                             to_append = True
-                    single_row_list.append(to_append)
+                    single_row_list_c0.append(to_append)
                     counter += 1
-                all_rows_list.append(single_row_list)
-            frames_list.append(all_rows_list)
-            pbar.update(1)
+                    pbar.update(1)
 
-    numpy_masks = []
-    for entry in tqdm(frames_list):
-        numpy_masks.append(np.array(entry))
+                    to_append = "0"
+                    if counter < len(bits):
+                        bit = bits[counter]
+                        if bit == "1":
+                            to_append = False
+                        if bit == "0":
+                            to_append = True
+                    single_row_list_c1.append(to_append)
+                    counter += 1
+                    pbar.update(1)
+                all_rows_list_c0.append(single_row_list_c0)
+                all_rows_list_c1.append(single_row_list_c1)
+                all_rows_list_c2.append(single_row_list_c2)
+            frames_list_c0.append(all_rows_list_c0)
+            frames_list_c1.append(all_rows_list_c1)
+            frames_list_c2.append(all_rows_list_c2)
 
-    white_pixel = (255, 255, 255)
-    red_pixel = (255, 0, 0)
-    for mask_idx, numpy_mask in enumerate(tqdm(numpy_masks)):
-        if mask_idx == len(numpy_masks) - 1:
+    print("converting to numpy arrays ..")
+    numpy_frame_masks_by_channel = []
+    for frames_list in frames_lists:
+        numpy_frame_masks_by_channel.append([])
+        for entry in tqdm(frames_list):
+            numpy_frame_masks_by_channel[-1].append(np.array(entry, dtype=bool))
+
+    print("saving frames ..")
+    for frame_idx in tqdm(range(len(numpy_frame_masks_by_channel[-1]))):
+        for channel_idx in range(3):
+            # if frame_idx == len(numpy_frame_masks_by_channel[-1]) - 1:
+            #     print("saving last frame ..")
+            #     frame = Image.new('RGB', (width, height))
+            #     pixels = frame.load()
+            #     for row in range(height):
+            #         for col in range(width):
+            #             val0 = numpy_frame_masks_by_channel[0][frame_idx] * 255
+            #             val1 = numpy_frame_masks_by_channel[1][frame_idx] * 255
+            #             val2 = numpy_frame_masks_by_channel[2][frame_idx] * 255
+            #
+            #             pixels[col, row] = (val0[row][col], val1[row][col], val2[row][col])
+            # else:
             frame = Image.new('RGB', (width, height))
-            pixels = frame.load()
-            for row in range(height):
-                for col in range(width):
-                    val = numpy_mask[row][col]
-                    if val is None:
-                        pixels[col, row] = red_pixel
-                        continue
-                    if val is True:
-                        pixels[col, row] = white_pixel
-                        continue
-        else:
-            frame = Image.new('RGB', numpy_mask.shape[::-1])
 
             # set the pixel values based on the boolean values
             arr = np.array(frame)
-            arr[:, :, 0] = numpy_mask * 255
-            arr[:, :, 1] = numpy_mask * 255
-            arr[:, :, 2] = numpy_mask * 255
+            arr[:, :, 0] = numpy_frame_masks_by_channel[0][frame_idx] * 255
+            arr[:, :, 1] = numpy_frame_masks_by_channel[1][frame_idx] * 255
+            arr[:, :, 2] = numpy_frame_masks_by_channel[2][frame_idx] * 255
 
             frame = Image.fromarray(arr, mode='RGB')
-        frame.save(f"out/{str(mask_idx).zfill(8)}.png")
+            frame.save(f"out/{str(frame_idx).zfill(8)}.png")
 
 
 def decode_frame(frame):
@@ -100,10 +131,15 @@ def decode_frame(frame):
     done = False
     for row in range(height):
         for col in range(width):
-            if pixels[col, row][0] >= 128 and pixels[col, row][1] < 128 and pixels[col, row][2] < 128:
+
+            if pixels[col, row][2] >= 128:
                 done = True
                 break
-            if pixels[col, row][0] >= 128 and pixels[col, row][1] >= 128 and pixels[col, row][2] >= 128:
+            if pixels[col, row][0] >= 128:
+                bits_read += "0"
+            else:
+                bits_read += "1"
+            if pixels[col, row][1] >= 128:
                 bits_read += "0"
             else:
                 bits_read += "1"
@@ -179,6 +215,5 @@ def create_video(out_path):
 
 
 encode_file("input.png")
-# decode_file("output.jpg")
 create_video("encoded.mp4")
 decode_video("encoded.mp4", "output.png")
