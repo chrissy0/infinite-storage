@@ -100,18 +100,6 @@ def encode_file(path):
     print("saving frames ..")
     for frame_idx in tqdm(range(len(numpy_frame_masks_by_channel[-1]))):
         for channel_idx in range(3):
-            # if frame_idx == len(numpy_frame_masks_by_channel[-1]) - 1:
-            #     print("saving last frame ..")
-            #     frame = Image.new('RGB', (width, height))
-            #     pixels = frame.load()
-            #     for row in range(height):
-            #         for col in range(width):
-            #             val0 = numpy_frame_masks_by_channel[0][frame_idx] * 255
-            #             val1 = numpy_frame_masks_by_channel[1][frame_idx] * 255
-            #             val2 = numpy_frame_masks_by_channel[2][frame_idx] * 255
-            #
-            #             pixels[col, row] = (val0[row][col], val1[row][col], val2[row][col])
-            # else:
             frame = Image.new('RGB', (width, height))
 
             # set the pixel values based on the boolean values
