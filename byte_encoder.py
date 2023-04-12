@@ -20,7 +20,7 @@ def bits_to_binary(bits):
 width = 480
 height = 270
 scale_factor = 8
-fps_encoded = 5
+fps_encoded = 6
 
 
 def encode_file(path):
@@ -42,22 +42,25 @@ def encode_file(path):
     red_pixel = (255, 0, 0)
     frames = []
     counter = 0
-    while counter < len(bits):
-        frame = Image.new('RGB', (width, height))
-        pixels = frame.load()
-        for row in range(height):
-            for col in range(width):
-                if counter >= len(bits):
-                    pixels[col, row] = red_pixel
-                    continue
-                bit = bits[counter]
-                counter += 1
-                if bit == "1":
-                    continue
-                pixels[col, row] = white_pixel
-        frame = frame.resize((width * scale_factor, height * scale_factor), Image.LANCZOS)
-        frame.save(f"out/{str(len(frames)).zfill(8)}.png")
-        frames.append(frame)
+    import math
+    with tqdm(total=math.ceil(len(bits) / (height * width))) as pbar:
+        while counter < len(bits):
+            frame = Image.new('RGB', (width, height))
+            pixels = frame.load()
+            for row in range(height):
+                for col in range(width):
+                    if counter >= len(bits):
+                        pixels[col, row] = red_pixel
+                        continue
+                    bit = bits[counter]
+                    counter += 1
+                    if bit == "1":
+                        continue
+                    pixels[col, row] = white_pixel
+            pbar.update(1)
+            frame = frame.resize((width * scale_factor, height * scale_factor), Image.LANCZOS)
+            frame.save(f"out/{str(len(frames)).zfill(8)}.png")
+            frames.append(frame)
 
 
 def decode_frame(frame):
@@ -67,10 +70,10 @@ def decode_frame(frame):
     done = False
     for row in range(height):
         for col in range(width):
-            if pixels[col, row][0] > 128 and pixels[col, row][1] < 128 and pixels[col, row][2] < 128:
+            if pixels[col, row][0] >= 128 and pixels[col, row][1] < 128 and pixels[col, row][2] < 128:
                 done = True
                 break
-            if pixels[col, row][0] > 128 and pixels[col, row][1] > 128 and pixels[col, row][2] > 128:
+            if pixels[col, row][0] >= 128 and pixels[col, row][1] >= 128 and pixels[col, row][2] >= 128:
                 bits_read += "0"
             else:
                 bits_read += "1"
@@ -100,26 +103,29 @@ def decode_video(video_path, out_path):
     cap = cv2.VideoCapture(video_path)
 
     fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     frames_per_encoded_frame = fps / fps_encoded
     frames_loaded = 0
     frames_checked = 0
 
-    success, cv2_frame = cap.read()
-    while success:
-        frame_to_check = int(frames_per_encoded_frame * (frames_checked + 0.5))
-
-        if frame_to_check == frames_loaded:
-            frames_checked += 1
-            frame = Image.fromarray(cv2.cvtColor(cv2_frame, cv2.COLOR_BGR2RGB))
-            bits_read += decode_frame(frame)
-
-        frames_loaded += 1
-
+    with tqdm(total=total_frames) as pbar:
         success, cv2_frame = cap.read()
+        while success:
+            pbar.update(1)
+            frame_to_check = int(frames_per_encoded_frame * (frames_checked + 0.5))
 
-    bytes_read = bits_to_binary(bits_read)
-    with open(out_path, "wb") as file:
-        file.write(bytes_read)
+            if frame_to_check == frames_loaded:
+                frames_checked += 1
+                frame = Image.fromarray(cv2.cvtColor(cv2_frame, cv2.COLOR_BGR2RGB))
+                bits_read += decode_frame(frame)
+
+            frames_loaded += 1
+
+            success, cv2_frame = cap.read()
+
+        bytes_read = bits_to_binary(bits_read)
+        with open(out_path, "wb") as file:
+            file.write(bytes_read)
 
 
 def create_video(out_path):
